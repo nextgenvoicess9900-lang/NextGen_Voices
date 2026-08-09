@@ -1,190 +1,272 @@
-# Publishing NEXTGEN to GitHub (and putting it online)
+# NEXTGEN Admin Dashboard — Backend
 
-This repo has two independent parts that get pushed to GitHub together but
-**deployed separately**:
+A production-oriented Node/Express + MongoDB API for the NEXTGEN Admin
+Dashboard: two roles (Admin, Editor), editor self-registration with
+Admin approval, posts, viewer questions, notifications, announcements,
+analytics, and an audit log.
 
-```
-nextgen/
-├── frontend/
-│   └── index.html      ← the entire website (single file)
-└── backend/
-    └── ...              ← Node/Express + MongoDB API
-```
+This is a **starting point**, not a black box — read `server.js` and the
+`middleware/` folder before deploying; adjust the security defaults
+(rate limits, cookie flags, CORS origin) to your actual hosting setup.
 
-The frontend is one static HTML file that talks to the backend over HTTP.
-They don't have to live on the same host — in fact the simplest free setup
-puts them on two different services (see Step 3).
-
----
-
-## Step 1 — Create the GitHub repository
-
-1. Go to [github.com/new](https://github.com/new), name it (e.g. `nextgen`),
-   leave it **empty** (no README/license — you already have files), click
-   **Create repository**.
-2. On your computer, in the folder containing `frontend/` and `backend/`:
+## 1. Install & configure
 
 ```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<repo-name>.git
-git push -u origin main
+cd nextgen-backend
+npm install
+cp .env.example .env
 ```
 
-If `git` asks for credentials and you have 2FA enabled, use a
-[Personal Access Token](https://github.com/settings/tokens) as the password,
-not your GitHub password.
+Edit `.env`:
+- Generate real random secrets for `JWT_SECRET`, `COOKIE_SECRET`, `CSRF_SECRET`
+  (e.g. `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`).
+- Point `MONGO_URI` at your MongoDB instance (Atlas or self-hosted).
+- Set `CLIENT_ORIGIN` to the exact origin your frontend is served from.
 
-**Before you push:** confirm `backend/.gitignore` is actually being respected
-— run `git status` and make sure `node_modules/`, `.env`, and any files
-inside `uploads/` (other than `.gitkeep`) are **not** listed as new files.
-If they are, you forgot to add `.gitignore` before your first `git add .`.
+## 2. Create the Admin account
 
----
+There is no public admin-registration endpoint — the single Admin account
+is created once, from environment variables, never hardcoded in client code:
 
-## Step 2 — Set up the database (MongoDB Atlas, free tier)
-
-1. Create a free cluster at [mongodb.com/atlas](https://www.mongodb.com/cloud/atlas).
-2. **Database Access** → add a database user (username + password).
-3. **Network Access** → add IP address `0.0.0.0/0` (allow from anywhere) —
-   simplest for getting started; tighten this later if you want.
-4. **Connect** → "Connect your application" → copy the connection string.
-   It looks like:
-   `mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/nextgen?retryWrites=true&w=majority`
-5. Save this — it's your `MONGO_URI`.
-
----
-
-## Step 3 — Deploy the backend (Render, free tier)
-
-1. Go to [render.com](https://render.com) → sign in with GitHub.
-2. **New +** → **Web Service** → pick your repo.
-3. Configure:
-   - **Root Directory:** `backend`
-   - **Build Command:** `npm install`
-   - **Start Command:** `npm start`
-   - **Instance Type:** Free
-4. **Environment** tab → add every variable from `backend/.env.example`:
-
-   | Key | Value |
-   |---|---|
-   | `NODE_ENV` | `production` |
-   | `PORT` | `10000` (Render sets this automatically — you can leave your own `PORT` var unset and Render will still work, since `server.js` reads `process.env.PORT`) |
-   | `MONGO_URI` | the Atlas connection string from Step 2 |
-   | `CLIENT_ORIGIN` | the URL your frontend will be served from (fill this in *after* Step 4, then redeploy) |
-   | `JWT_SECRET` | run `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` locally and paste the output |
-   | `COOKIE_SECRET` | a different random value, same command |
-   | `CSRF_SECRET` | a third different random value, same command |
-   | `SEED_ADMIN_USER_ID` | pick an admin login ID |
-   | `SEED_ADMIN_PASSWORD` | pick a strong password (you'll change/remove this after seeding) |
-   | `UPLOAD_DIR` | `uploads` |
-   | `MAX_UPLOAD_MB` | `8` |
-
-   Leave `SMTP_*` and `RAZORPAY_*` blank for now — the app degrades
-   gracefully (emails log instead of sending, donations return a clear
-   "not configured" error) rather than crashing.
-
-5. Click **Create Web Service**. Render will build and deploy — this takes
-   a few minutes. Once live, you'll get a URL like
-   `https://nextgen-backend-xxxx.onrender.com`.
-
-6. **Seed the admin account** — Render's dashboard has a **Shell** tab for
-   your service once it's deployed. Open it and run:
-   ```bash
-   npm run seed:admin
-   ```
-   This creates the one Admin account from `SEED_ADMIN_USER_ID` /
-   `SEED_ADMIN_PASSWORD`. Do this once, then consider removing
-   `SEED_ADMIN_PASSWORD` from the environment variables afterward.
-
-**Important limitation to know about:** Render's free tier has an
-**ephemeral filesystem** — anything saved to `backend/uploads/` (workshop
-banners, certificates, resources, profile photos) is **deleted every time
-the service restarts or redeploys**. This is fine for testing, but before
-real users rely on uploaded files, switch file storage to something
-persistent (e.g. Cloudflare R2, AWS S3, or a Render persistent disk on a
-paid plan). This isn't a small caveat — it will look like "my uploads keep
-disappearing" and it's this, not a bug in the code.
-
----
-
-## Step 4 — Deploy the frontend (GitHub Pages, free)
-
-Since `frontend/index.html` is a single static file, GitHub Pages is the
-simplest host — no build step, no separate account needed.
-
-1. **First, point the frontend at your live backend.** Open
-   `frontend/index.html`, find this line near the top of the `<script>`
-   section (search for `NEXTGEN_API_BASE`):
-   ```js
-   window.NEXTGEN_API_BASE = window.NEXTGEN_API_BASE || 'http://localhost:5000/api';
-   ```
-   Change `http://localhost:5000/api` to your Render URL + `/api`, e.g.:
-   ```js
-   window.NEXTGEN_API_BASE = window.NEXTGEN_API_BASE || 'https://nextgen-backend-xxxx.onrender.com/api';
-   ```
-   Commit and push this change.
-
-2. On GitHub, go to your repo → **Settings** → **Pages**.
-3. **Source:** Deploy from a branch. **Branch:** `main`, **Folder:** `/frontend`.
-4. Save. GitHub gives you a URL like
-   `https://<your-username>.github.io/<repo-name>/` within a minute or two.
-
-5. **Go back to Render** and set `CLIENT_ORIGIN` (from Step 3) to this exact
-   GitHub Pages URL, then redeploy the backend. This is required — the
-   backend's CORS/cookie settings only accept requests from the origin you
-   configure there, and login/session cookies won't work cross-origin
-   otherwise.
-
----
-
-## Step 5 — Verify it actually works
-
-1. Open your GitHub Pages URL.
-2. Try logging in as Admin with the credentials you seeded in Step 3.
-3. Open your browser's DevTools → Network tab, refresh, and confirm
-   requests are going to your Render URL and coming back with `200`, not
-   CORS errors or `401`s. If you see CORS errors, double check
-   `CLIENT_ORIGIN` on Render matches your GitHub Pages URL **exactly**
-   (including `https://`, no trailing slash mismatch).
-
----
-
-## Alternative: one host for both (Render only)
-
-If you'd rather not use two services, you can have Express serve the
-frontend file directly instead of using GitHub Pages. Add this near the
-bottom of `backend/server.js`, before `app.listen(...)`:
-
-```js
-const path = require('path');
-app.use(express.static(path.join(__dirname, '..', 'frontend')));
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
-  res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
-});
+```bash
+npm run seed:admin
 ```
 
-Then set `window.NEXTGEN_API_BASE` in `index.html` to `/api` (relative,
-no domain) instead of a full URL, since frontend and backend now share one
-origin. This simplifies CORS entirely (`CLIENT_ORIGIN` can equal your one
-Render URL) at the cost of losing GitHub Pages' free static hosting.
+This reads `SEED_ADMIN_USER_ID` / `SEED_ADMIN_PASSWORD` from `.env`, hashes
+the password with bcrypt (12 rounds), and stores only the hash. Remove or
+rotate `SEED_ADMIN_PASSWORD` from `.env` afterwards if you share that file.
 
----
+## 3. Run
 
-## What's *not* handled by this guide
+```bash
+npm run dev     # nodemon, local development
+npm start       # production
+```
 
-Consistent with how the whole app was built — no fabricated claims:
+The API listens on `PORT` (default `5000`) and exposes everything under `/api`.
 
-- **Email and SMS** won't actually send until you fill in real `SMTP_*`
-  credentials (Step 3) — until then the backend logs what it *would* have
-  sent instead of erroring.
-- **Payments** (Donation Center) won't process until you add real
-  `RAZORPAY_*` keys.
-- **File uploads are not durable** on Render's free tier — see the warning
-  in Step 3.
-- **Custom domain** — both GitHub Pages and Render support one for free;
-  their own docs cover the DNS steps, not repeated here since it depends
-  on your domain registrar.
+## Roles
+
+Three account types now exist:
+
+- **Admin** — full control (unchanged from before).
+- **Editor** — own posts + answering viewer questions (unchanged from before).
+- **Viewer** — a student/visitor account, **passwordless**. There is no
+  password field at all: logging in means requesting a 6-digit code emailed
+  to the address on file and entering it within 10 minutes
+  (`models/Viewer.js`, `utils/otp.js`). The account is created automatically
+  on first request — no separate "register" step, no admin approval.
+  Unlocks two things only: opting into notification emails, and booking
+  one-on-one counseling slots. Viewers have **no** access to the admin
+  dashboard — `authorize('viewer')` gates their routes the same way
+  `authorize('admin')` / `authorize('editor')` gate the others.
+
+**Nothing about public browsing changed.** Posts, notifications, and
+announcements were public `GET` endpoints before Viewers existed and still
+are — nobody needs an account to read them. Viewer accounts only add two
+capabilities: email delivery of new notifications, and counseling bookings.
+
+## Donation Center (Razorpay)
+
+The Donation Center accepts real payments via [Razorpay](https://razorpay.com),
+which is the standard gateway for accepting rupee (₹) payments. To enable it:
+
+1. Create a Razorpay account and get your key pair from
+   [dashboard.razorpay.com/app/keys](https://dashboard.razorpay.com/app/keys).
+2. Set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in `.env`.
+3. `npm run seed:impact-stats` to populate the Live Impact Dashboard with
+   the five default numbers from the design spec — edit them anytime from
+   the admin dashboard's Donation Center management view.
+4. Create at least one `Cause` (from the admin dashboard or via `POST
+   /api/causes`) so there's something for donors to select and support.
+
+**Without Razorpay keys configured**, `POST /api/donations/create-order`
+returns a clear `503` error instead of a fake success — the entire
+Donation Center UI (causes, impact dashboard, wall of gratitude, tree
+counter) is still fully buildable and browsable, it just can't take a real
+payment until you add your own merchant keys.
+
+**Security note:** a payment is never marked `completed` — and a cause's
+raised amount never increases — until `POST /api/donations/verify` checks
+the payment's HMAC-SHA256 signature against your `RAZORPAY_KEY_SECRET`
+server-side. The client-reported "payment succeeded" callback from
+Razorpay's Checkout.js is never trusted on its own; this is the standard,
+required integration pattern for Razorpay (or any gateway using signed
+webhooks/callbacks).
+
+## Counseling & email notifications
+
+- Admin/Editor open bookable slots (`POST /api/counseling/slots`); Viewers
+  browse them publicly-ish (`GET /api/counseling/slots`, open slots only,
+  no viewer identity ever exposed) and book one (`POST .../book`, viewer
+  session required). Booking is atomic — `findOneAndUpdate` on `status:
+  'open'` — so two people can't win the same slot in a race.
+- When an Admin publishes a `Notification`, every `Viewer` with
+  `emailNotifications: true` gets an email (`utils/mailer.js`, via
+  `nodemailer`). If `SMTP_HOST` isn't set in `.env`, sending is skipped and
+  logged instead of failing — handy for local dev without a mail account.
+- Booking a slot also sends the viewer a one-off confirmation email through
+  the same mailer.
+
+## Security model
+
+| Concern | How it's handled |
+|---|---|
+| Passwords | Never stored in plaintext — bcrypt, 12 salt rounds (`bcryptjs`) |
+| Sessions | JWT in an **httpOnly, sameSite=strict** cookie — inaccessible to JS, mitigates XSS token theft |
+| CSRF | Double-submit cookie pattern (`csrf-csrf`) — frontend must send `x-csrf-token` header matching the readable cookie on every state-changing request. Fetch `GET /api/csrf-token` on app load. |
+| Rate limiting | `express-rate-limit`: tight on `/auth/*` (login/register), moderate on the public question box, a general baseline on all of `/api` |
+| Input validation | `express-validator` on every write endpoint (auth, posts, questions, notifications, announcements) |
+| NoSQL injection | `express-mongo-sanitize` strips `$`/`.` operators from `body`/`query`/`params` globally |
+| XSS / stored HTML | `sanitize-html` scrubs all rich-text fields (post content, announcement descriptions, question answers) down to an allow-list of tags/attributes before saving |
+| Authorization | Two explicit roles only (`admin`, `editor`), enforced **server-side** in `middleware/authorize.js` — not just hidden in the UI. Editors can only edit/delete their own posts (`authorizeOwnerOrAdmin`) |
+| Transport/headers | `helmet()` for standard security headers; `cors()` locked to a single configured origin with credentials |
+| Editor approval | Strictly two actions on a pending request — **Accept** (promotes to `Editor`) or **Revoke** (permanent delete) — no toggles, no partial states, matching the product spec |
+| Viewer OTP login | Code is never stored in plaintext (HMAC-SHA256 with a server pepper, `utils/otp.js`), expires in 10 minutes, invalidated after 5 wrong guesses, and a 45s resend cooldown per email prevents mail-bombing an inbox |
+
+None of this replaces a security review before going live — in particular,
+put the API behind HTTPS in production (`secure` cookies require it),
+consider a Web Application Firewall, and rotate secrets regularly.
+
+## Project structure
+
+```
+nextgen-backend/
+├── server.js              # app entry point, middleware wiring
+├── config/db.js           # MongoDB connection
+├── models/                # Mongoose schemas (Admin, Editor, PendingEditor,
+│                           #   Post, Question, Notification, Announcement,
+│                           #   ActivityLog, Media, Settings)
+├── middleware/             # authenticate, authorize, csrf, rate limiters,
+│                           #   validation, error handling
+├── controllers/            # one file per resource, business logic only
+├── routes/                 # one file per resource, wires middleware + validators
+└── utils/                  # tokens, sanitizers, activity logging, cron scheduler, seed script
+```
+
+## API reference (summary)
+
+All request/response bodies are JSON. Endpoints marked **auth** require the
+session cookie; **admin** / **editor** further restrict by role.
+
+### Auth
+- `GET /api/csrf-token` — fetch CSRF token (call first)
+- `POST /api/auth/admin/login` `{ userId, password }`
+- `POST /api/auth/editor/register` `{ fullName, email, institution, phone, username, password, confirmPassword, profilePhoto }` → creates a **pending** request
+- `POST /api/auth/editor/login` `{ username, password }` — fails with 403 while still pending
+- `POST /api/auth/viewer/request-otp` `{ email, fullName?, institution? }` → creates the account on first request (no admin approval, no password); emails a 6-digit code. `fullName`/`institution` are only used if the account doesn't exist yet.
+- `POST /api/auth/viewer/verify-otp` `{ email, code }` → verifies the code and signs the viewer in
+- `GET /api/auth/me` — auth
+- `POST /api/auth/logout` — auth
+
+### Viewers (viewer only)
+- `GET /api/viewers/me`
+- `PUT /api/viewers/me` `{ fullName?, institution?, emailNotifications? }` — the notification opt-in/out toggle
+
+### Counseling
+- `GET /api/counseling/slots` — public, open + upcoming only
+- `GET /api/counseling/slots/mine` — auth (admin/editor), their own hosted slots incl. who booked
+- `POST /api/counseling/slots` — auth (admin/editor) `{ topic?, date, startTime, endTime, notes? }`
+- `DELETE /api/counseling/slots/:id` — auth (admin/editor, must be the host or an admin)
+- `POST /api/counseling/slots/:id/book` — auth (viewer) `{ viewerNote? }`
+- `GET /api/counseling/bookings/mine` — auth (viewer)
+- `POST /api/counseling/slots/:id/cancel-booking` — auth (viewer, must be their own booking)
+
+### Editors (admin only)
+- `GET /api/editors/pending`
+- `GET /api/editors`
+- `POST /api/editors/:id/accept`
+- `POST /api/editors/:id/revoke`
+- `DELETE /api/editors/:id`
+- `GET /api/editors/:id/analytics` — admin, or the editor viewing their own
+
+### Posts
+- `GET /api/posts` — public, published only
+- `GET /api/posts/:id` — public if published; owner/admin if draft
+- `GET /api/posts/mine/list` — auth (admin/editor)
+- `GET /api/posts/admin/all` — admin
+- `POST /api/posts` — auth (admin/editor)
+- `PUT /api/posts/:id` — owner or admin
+- `DELETE /api/posts/:id` — owner or admin
+
+### Posts
+- `GET /api/posts/explore?q=&category=&contentType=&sort=&page=&limit=` — public. The Explore feed: search (with light synonym expansion), category/type filters, sort (`newest`/`trending`/`mostViewed`/`mostLiked`/`featured`), pagination
+- `GET /api/posts/explore/stats` — public. Live counts (+ "today" delta) per content bucket, for the Explore page's statistics strip
+- `GET /api/posts/suggest?q=` — public, autocomplete (titles/categories/tags)
+- `GET /api/posts` — public, published only
+- `GET /api/posts/:id` — public if published; owner/admin if draft; identity optional (flags `likedByMe`/`bookmarkedByMe` if logged in)
+- `GET /api/posts/mine/list` — auth (admin/editor)
+- `GET /api/posts/admin/all` — admin
+- `GET /api/posts/bookmarks/mine` — auth (admin/editor/viewer)
+- `POST /api/posts` — auth (admin/editor) — now also accepts `contentType`, `media[]`, `opportunityMeta`, `researchMeta`, `featured`
+- `PUT /api/posts/:id` — owner or admin
+- `DELETE /api/posts/:id` — owner or admin
+- `POST /api/posts/:id/like` / `POST /api/posts/:id/bookmark` — auth (admin/editor/viewer), toggles
+
+### Questions
+- `POST /api/questions` — public, anonymous, rate-limited
+- `GET /api/questions` — auth (admin/editor)
+- `POST /api/questions/:id/answer` — auth (admin/editor)
+- `PUT /api/questions/:id/status` — auth (admin/editor)
+- `DELETE /api/questions/:id` — admin
+
+### Notifications
+- `GET /api/notifications` — public (published, scheduled time has passed, unexpired; pinned/urgent sort first)
+- `GET /api/notifications/all` — auth (admin/editor)
+- `POST /api/notifications` — admin — `{ title, message, category, priority, link?, pinned?, urgent?, scheduledFor?, expiryDate? }`
+- `PUT /api/notifications/:id` — admin, edit any field
+- `DELETE /api/notifications/:id` — admin
+
+### Announcements
+- `GET /api/announcements` — public
+- `GET /api/announcements/all` — admin
+- `POST /api/announcements` — admin (auto-publishes, or schedules if `scheduleDate` is future)
+- `DELETE /api/announcements/:id` — admin
+
+### Analytics & activity (admin only)
+- `GET /api/analytics/overview`
+- `GET /api/activity`
+
+### Search (admin/editor)
+- `GET /api/search?q=...`
+
+### Settings
+- `GET /api/settings` — public
+- `PUT /api/settings` — admin
+
+### Uploads (admin/editor)
+- `POST /api/uploads` — multipart `file` field, images/video only, size-limited
+
+### Causes (Donation Center campaigns)
+- `GET /api/causes` — public, active causes
+- `GET /api/causes/featured` — public, the "Opportunity of the Day" cause
+- `GET /api/causes/:id` — public
+- `GET /api/causes/admin/all` — admin, includes inactive
+- `POST /api/causes` — admin `{ title, description, category, coverImage, goalAmount, featured }`
+- `PUT /api/causes/:id` — admin
+- `DELETE /api/causes/:id` — admin
+
+### Donations (Razorpay-backed)
+- `POST /api/donations/create-order` — public `{ causeId, amount, donorName?, donorEmail?, anonymous?, message? }` → opens a Razorpay order; returns 503 with a clear message if `RAZORPAY_KEY_ID`/`SECRET` aren't configured
+- `POST /api/donations/verify` — public `{ razorpay_order_id, razorpay_payment_id, razorpay_signature }` → verifies the HMAC-SHA256 signature server-side before marking the donation `completed` and incrementing the cause's `raisedAmount`
+- `GET /api/donations/impact` — public, curated Impact Dashboard stats + real totals
+- `GET /api/donations/wall` — public, Wall of Gratitude (messages left with completed donations)
+- `GET /api/donations/tree` — public, total completed-donation count ("Tree of Contributors")
+- `GET /api/donations/admin/all` — admin, full donation ledger
+
+### Impact Stats (admin-curated dashboard numbers)
+- `GET /api/impact-stats/admin/all` — admin
+- `POST /api/impact-stats` — admin, upsert by `key` `{ key, label, icon, value, monthlyIncrease, order }`
+- `DELETE /api/impact-stats/:id` — admin
+
+## Wiring up the existing frontend
+
+The current NEXTGEN site (`nextgen-enhanced.html`) manages its admin panel
+purely with `localStorage`. To connect it to this API:
+1. On app load, `fetch('/api/csrf-token')` and store the token in memory.
+2. Replace the `localStorage` reads/writes in the admin dashboard's JS with
+   `fetch()` calls to the endpoints above, sending `credentials: 'include'`
+   and the `x-csrf-token` header on writes.
+3. Add an Editor Registration view and a Pending Approvals view (Accept /
+   Revoke buttons only) to the admin route — happy to build that frontend
+   pass next if useful.
