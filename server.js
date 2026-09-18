@@ -9,7 +9,7 @@ const morgan = require('morgan');
 const mongoSanitize = require('express-mongo-sanitize');
 const path = require('path');
 
-const connectDB = require('./config/db');
+const { connectDB, isDbReady, dbStatus } = require('./config/db');
 const { apiLimiter } = require('./middleware/rateLimiters');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const startScheduler = require('./utils/scheduler');
@@ -30,6 +30,7 @@ const viewerRoutes = require('./routes/viewerRoutes');
 const counselingRoutes = require('./routes/counselingRoutes');
 const causeRoutes = require('./routes/causeRoutes');
 const donationRoutes = require('./routes/donationRoutes');
+const directusRoutes = require('./routes/directusRoutes');
 const impactStatRoutes = require('./routes/impactStatRoutes');
 const workshopRoutes = require('./routes/workshopRoutes');
 
@@ -59,8 +60,30 @@ app.use('/api', apiLimiter);
 app.use('/uploads', express.static(path.join(__dirname, process.env.UPLOAD_DIR || 'uploads')));
 
 // ---- Routes ----
-app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+// The website itself (index.html) is served by this server, so the API and
+// site share one origin in preview/dev — no CORS dance needed. In production
+// it can still be fronted by a CDN/static host pointing NEXTGEN_API_BASE here.
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+
+app.get('/api/health', (req, res) =>
+  res.json({
+    status: 'ok',
+    db: isDbReady() ? 'connected' : 'unavailable',
+    time: new Date().toISOString(),
+  })
+);
 app.use('/api/csrf-token', csrfRoutes);
+
+// When the database isn't ready (no MONGO_URI, or a connection that is
+// still connecting / retrying), every data endpoint answers with an honest
+// 503 immediately instead of hanging on buffered mongoose queries. The site
+// still loads; the dashboard shows the error text. Evaluated per request so
+// endpoints start working the instant the DB connects — no restart needed.
+app.use('/api', (req, res, next) => {
+  if (isDbReady()) return next();
+  res.status(503).json({ error: dbStatus() || 'Database is unavailable.' });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/editors', editorRoutes);
 app.use('/api/posts', postRoutes);
@@ -76,6 +99,7 @@ app.use('/api/viewers', viewerRoutes);
 app.use('/api/counseling', counselingRoutes);
 app.use('/api/causes', causeRoutes);
 app.use('/api/donations', donationRoutes);
+app.use('/api/directus', directusRoutes);
 app.use('/api/impact-stats', impactStatRoutes);
 app.use('/api/workshops', workshopRoutes);
 app.use('/api/registrations', require('./routes/registrationRoutes'));
@@ -94,8 +118,13 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 connectDB().then(() => {
-  startScheduler();
-  app.listen(PORT, () => console.log(`[server] NEXTGEN API listening on port ${PORT}`));
+  // The scheduler only touches MongoDB — running it without a DB would just
+  // log a cron error every minute, so it only starts with a live connection.
+  if (isDbReady()) startScheduler();
+  const banner = isDbReady()
+    ? `[server] NEXTGEN API listening on port ${PORT}`
+    : `[server] NEXTGEN site preview on port ${PORT} (database unavailable — data endpoints return 503)`;
+  app.listen(PORT, () => console.log(banner));
 });
 
 module.exports = app;

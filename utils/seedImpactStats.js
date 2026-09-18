@@ -6,7 +6,7 @@
  * afterwards from Donation Center management in the dashboard.
  */
 require('dotenv').config();
-const connectDB = require('../config/db');
+const { connectDB } = require('../config/db');
 const ImpactStat = require('../models/ImpactStat');
 
 const DEFAULTS = [
