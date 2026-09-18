@@ -94,6 +94,25 @@ Razorpay's Checkout.js is never trusted on its own; this is the standard,
 required integration pattern for Razorpay (or any gateway using signed
 webhooks/callbacks).
 
+## Directus integration (browse your data platform)
+
+NEXTGEN connects to [Directus](https://directus.io) — an open-source data platform
+that wraps any SQL database with an instant REST/GraphQL API and an admin UI. The
+admin dashboard's **Integrations** view shows the connection status and lets you
+browse the collections the token can read (previewing rows of any collection).
+
+To enable it:
+
+1. Set `DIRECTUS_URL` (e.g. `https://your-instance.directus.app`) and
+   `DIRECTUS_TOKEN` (a static user token, generated in the Directus admin under
+   *User Directory → your user → Token*) in `.env`.
+2. Reload the dashboard → **Integrations**. Without the keys, the card honestly
+   says "Not connected" instead of erroring.
+
+All Directus traffic is proxied through this backend (`/api/directus/*`), so the
+`DIRECTUS_TOKEN` never reaches the browser. Everything is Admin-only and
+read-only — item writes happen in the Directus admin app, not from NEXTGEN.
+
 ## Counseling & email notifications
 
 - Admin/Editor open bookable slots (`POST /api/counseling/slots`); Viewers

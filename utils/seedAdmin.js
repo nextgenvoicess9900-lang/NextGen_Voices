@@ -7,11 +7,15 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
-const connectDB = require('../config/db');
+const { connectDB, isDbReady, dbStatus } = require('../config/db');
 const Admin = require('../models/Admin');
 
 (async () => {
-  await connectDB();
+  const conn = await connectDB();
+  if (!conn) {
+    console.error('Could not connect to MongoDB:', dbStatus() || 'unknown reason');
+    process.exit(1);
+  }
 
   const userId = process.env.SEED_ADMIN_USER_ID;
   const password = process.env.SEED_ADMIN_PASSWORD;
