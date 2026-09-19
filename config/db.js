@@ -65,6 +65,61 @@ function dbStatus() {
 }
 
 /**
+ * Catches the classic truncated / malformed Atlas URIs before wasting a DNS
+ * round-trip. Two shapes are unrecoverable and deserve a named fix:
+ *   1. No "@" at all  — only the username and password were pasted; the whole
+ *      "@cluster0.xxxxx.mongodb.net/dbname" part is missing.
+ *   2. An "@" whose host side has no dot — a username sitting where the
+ *      cluster host belongs.
+ * Throws an Error whose message is safe to log verbatim.
+ */
+function validateSrvUri(uri) {
+  if (!uri.startsWith('mongodb+srv://')) return;
+  const afterScheme = uri.slice('mongodb+srv://'.length);
+  const atIdx = afterScheme.indexOf('@');
+
+  // Trap: special characters in the password left un-encoded. An extra raw
+  // "@" makes the driver split user:pass at the wrong place (silent
+  // "bad auth"), and a raw ":" in the password truncates it at the first
+  // colon. Both are unambiguous, so name them before a confusing auth error.
+  const atCount = (afterScheme.match(/@/g) || []).length;
+  if (atIdx !== -1 && atCount > 1) {
+    throw new Error(
+      'MONGO_URI contains ' + atCount + ' "@" characters — the one inside your password is not URL-encoded. ' +
+      'Replace it with %40 (e.g. p@ss → p%40ss), or reset the database user password in Atlas to letters and numbers only. ' +
+      'Special characters in passwords must be percent-encoded: @ → %40, # → %23, : → %3A, / → %2F.'
+    );
+  }
+  if (atIdx !== -1) {
+    const credSegment = afterScheme.slice(0, atIdx);
+    const colonCount = (credSegment.match(/:/g) || []).length;
+    if (colonCount > 1) {
+      throw new Error(
+        'MONGO_URI\'s password contains a raw ":" — only the first ":" separates username from password. ' +
+        'Encode it as %3A, or reset the database user password in Atlas to letters and numbers only.'
+      );
+    }
+    if (/\s/.test(credSegment)) {
+      throw new Error('MONGO_URI contains a space inside the username/password — remove it (a stray space breaks authentication).');
+    }
+  }
+
+  const host = atIdx === -1
+    ? afterScheme.split('/')[0].split('?')[0]
+    : afterScheme.slice(atIdx + 1).split('/')[0].split('?')[0];
+  if (host && !host.includes('.')) {
+    const shape = atIdx === -1
+      ? 'it is missing the "@cluster0.xxxxx.mongodb.net/<dbname>" part entirely — you likely pasted only the username and password'
+      : `"${host}" sits where the cluster host belongs — that looks like a database username, not a host`;
+    throw new Error(
+      `MONGO_URI is not a complete Atlas connection string: ${shape}. ` +
+      'Copy the FULL connection string from Atlas → Database → Connect → Drivers ' +
+      '(mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/<dbname>) and update the MONGO_URI key. '
+    );
+  }
+}
+
+/**
  * Connects to MongoDB using the URI supplied in the environment.
  *
  * A missing MONGO_URI is a soft condition (preview/dev) — boot continues so
@@ -103,6 +158,7 @@ async function connectDB({ retry = true } = {}) {
   }
 
   try {
+    validateSrvUri(uri);
     const conn = await mongoose.connect(uri, { serverSelectionTimeoutMS: 8000 });
     return conn;
   } catch (err) {
@@ -113,7 +169,8 @@ async function connectDB({ retry = true } = {}) {
       console.error(
         '[db] The hostname in MONGO_URI could not be resolved. An Atlas URI must ' +
         'include the cluster host: mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/<dbname> — ' +
-        'copy it again via Atlas → Database → Connect → Drivers.'
+        'copy it again via Atlas → Database → Connect → Drivers. If SRV DNS lookups are blocked on this host, ' +
+        "Atlas also offers a standard (non-SRV) connection string in that same dialog — it works without SRV."
       );
     } else if (/authentication failed|bad auth/i.test(err.message)) {
       console.error('[db] The username/password in MONGO_URI was rejected — recheck the database user credentials.');
@@ -129,4 +186,4 @@ async function connectDB({ retry = true } = {}) {
   }
 }
 
-module.exports = { connectDB, isDbConfigured, isDbReady, dbStatus, normalizeUri };
+module.exports = { connectDB, isDbConfigured, isDbReady, dbStatus, normalizeUri, validateSrvUri };

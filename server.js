@@ -74,6 +74,22 @@ app.get('/api/health', (req, res) =>
 );
 app.use('/api/csrf-token', csrfRoutes);
 
+// CSRF enforcement for every state-changing API request. GET/HEAD/OPTIONS are
+// exempt; the token is issued by /api/csrf-token and echoed by the frontend in
+// the x-csrf-token header. Enforced AFTER the DB gate so DB-down 503s still
+// take priority, and errors are surfaced as a clean 403 (mapped from
+// csrf-csrf's invalidCsrfTokenError) instead of a stack-trace 500.
+const { doubleCsrfProtection, invalidCsrfTokenError } = require('./middleware/csrf');
+app.use('/api', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  doubleCsrfProtection(req, res, (err) => {
+    if (err === invalidCsrfTokenError) {
+      return res.status(403).json({ error: 'Invalid or missing CSRF token. Refresh the page and try again.' });
+    }
+    next(err);
+  });
+});
+
 // When the database isn't ready (no MONGO_URI, or a connection that is
 // still connecting / retrying), every data endpoint answers with an honest
 // 503 immediately instead of hanging on buffered mongoose queries. The site
