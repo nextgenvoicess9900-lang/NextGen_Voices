@@ -2684,7 +2684,7 @@ body{background:#F5F7E9;}
     <!-- VIDEO MANAGEMENT -->
     <div class="view" id="view-videos">
       <div class="topbar"><h1>Video Management</h1><button class="add-btn" onclick="openVideoModal()">+ Add Video</button></div>
-      <div class="browser-only-note">⚠️ Browser-only preview: videos are saved in this browser (localStorage) and are not yet connected to the database. Entries won't sync to other devices and may reset when site data is cleared.</div>
+      <div class="browser-only-note">✅ Saved to the database — changes sync to every device and survive restarts.</div>
       <table>
         <thead><tr><th>Title</th><th>Source</th><th>Featured</th><th>Status</th><th></th></tr></thead>
         <tbody id="videos-tbody"></tbody>
@@ -2701,7 +2701,7 @@ body{background:#F5F7E9;}
     <!-- SLIDES & PRESENTATIONS -->
     <div class="view" id="view-slides">
       <div class="topbar"><h1>Slides &amp; Presentations</h1><button class="add-btn" onclick="openSlideModal()">+ Add Presentation</button></div>
-      <div class="browser-only-note">⚠️ Browser-only preview: presentations are saved in this browser (localStorage) and are not yet connected to the database. Entries won't sync to other devices and may reset when site data is cleared.</div>
+      <div class="browser-only-note">✅ Saved to the database — changes sync to every device and survive restarts.</div>
       <table>
         <thead><tr><th>Title</th><th>Type</th><th>Status</th><th></th></tr></thead>
         <tbody id="slides-tbody"></tbody>
@@ -2769,7 +2769,7 @@ body{background:#F5F7E9;}
     <!-- EVENT MANAGER -->
     <div class="view" id="view-events">
       <div class="topbar"><h1>Event Manager</h1><button class="add-btn" onclick="openEventModal()">+ New Event</button></div>
-      <div class="browser-only-note">⚠️ Browser-only preview: events are saved in this browser (localStorage) and are not yet connected to the database. Entries won't sync to other devices and may reset when site data is cleared.</div>
+      <div class="browser-only-note">✅ Saved to the database — changes sync to every device and survive restarts.</div>
       <table>
         <thead><tr><th>Event</th><th>Date</th><th>Location</th><th>Status</th><th></th></tr></thead>
         <tbody id="events-tbody"></tbody>
@@ -2779,7 +2779,7 @@ body{background:#F5F7E9;}
     <!-- TEAM MANAGEMENT -->
     <div class="view" id="view-team">
       <div class="topbar"><h1>Team Management</h1><button class="add-btn" onclick="openTeamModal()">+ Add Visionary</button></div>
-      <div class="browser-only-note">⚠️ Browser-only preview: team members are saved in this browser (localStorage) and are not yet connected to the database. Entries won't sync to other devices and may reset when site data is cleared.</div>
+      <div class="browser-only-note">✅ Saved to the database — changes sync to every device and survive restarts.</div>
       <div class="team-grid" id="team-grid"></div>
     </div>
 
@@ -3707,6 +3707,10 @@ const Api = {
   cancelMyBooking: (id) => apiFetch(`/counseling/slots/${id}/cancel-booking`, { method:'POST' }),
 
   /* ---- Explore ---- */
+  listContent: (type) => apiFetch('/content-items?type=' + encodeURIComponent(type)),
+  createContent: (payload) => apiFetch('/content-items', { method:'POST', body: JSON.stringify(payload) }),
+  updateContent: (id, payload) => apiFetch('/content-items/' + id, { method:'PUT', body: JSON.stringify(payload) }),
+  deleteContent: (id) => apiFetch('/content-items/' + id, { method:'DELETE' }),
   explore: (params) => apiFetch('/posts/explore?' + new URLSearchParams(params).toString()),
   exploreStats: () => apiFetch('/posts/explore/stats'),
 
@@ -5685,10 +5689,10 @@ const seedMedia = [];
 const seedPosters = [];
 
 let contentData = getStore('nextgen_content', seedContent);
-let videosData = getStore('nextgen_videos', seedVideos);
-let slidesData = getStore('nextgen_slides', seedSlides);
-let eventsData = getStore('nextgen_events', seedEvents);
-let teamData = getStore('nextgen_team', seedTeam);
+let videosData = []; // DB-backed via /api/content-items
+let slidesData = []; // DB-backed
+let eventsData = []; // DB-backed
+let teamData = []; // DB-backed
 let mediaData = getStore('nextgen_media', seedMedia);
 let posterData = getStore('nextgen_posters', seedPosters);
 
@@ -6207,6 +6211,19 @@ document.getElementById('dash-menu-logout').addEventListener('click', ()=>{ docu
    RENDER ALL — branches by role so viewers never call
    editor/admin-only endpoints (server would 403 anyway).
 ========================================================= */
+async function loadContentData(){
+  const types = ['video','slide','event','team'];
+  try{
+    const results = await Promise.all(types.map(t => Api.listContent(t)));
+    videosData = results[0] || [];
+    slidesData = results[1] || [];
+    eventsData = results[2] || [];
+    teamData  = results[3] || [];
+  }catch(err){
+    console.warn('[content] load failed:', err.message);
+  }
+}
+
 function renderAll(){
   renderOverview();
   const role = currentUser.role;
@@ -6216,10 +6233,7 @@ function renderAll(){
     renderContent();
     renderMedia();
     renderPosters();
-    renderVideos();
-    renderSlides();
-    renderEvents();
-    renderTeam();
+    loadContentData().then(() => { renderVideos(); renderSlides(); renderEvents(); renderTeam(); });
     renderGuest();
     if(role==='admin') renderNotifHistory();
     if(role==='admin') renderDonationCenterAdmin();
@@ -10048,8 +10062,8 @@ function renderVideos(){
       </div></td>
     </tr>`).join('') : `<tr><td colspan="5" class="empty-row">No videos yet.</td></tr>`;
 }
-function toggleFeatured(id){ const v = videosData.find(v=>v.id===id); v.featured=!v.featured; setStore('nextgen_videos', videosData); renderVideos(); }
-function deleteVideo(id){ videosData = videosData.filter(v=>v.id!==id); setStore('nextgen_videos', videosData); renderVideos(); renderOverview(); }
+async function toggleFeatured(id){ const v = videosData.find(v=>v.id===id); if(!v) return; try{ const updated = await Api.updateContent(id, { featured: !v.featured }); const i = videosData.findIndex(x=>x.id===id); if(i>-1) videosData[i] = updated; renderVideos(); }catch(err){ alert(err.message || 'Update failed.'); } }
+async function deleteVideo(id){ if(!confirm('Delete this video?')) return; try{ await Api.deleteContent(id); videosData = videosData.filter(v=>v.id!==id); renderVideos(); renderOverview(); }catch(err){ alert(err.message || 'Delete failed.'); } }
 function openVideoModal(){
   document.getElementById('modal-box').innerHTML = `
     <h2>Add Video</h2>
@@ -10069,23 +10083,24 @@ function openVideoModal(){
     </div>`;
   openModal();
 }
-function saveVideo(){
+async function saveVideo(){
   const title = document.getElementById('mv-title').value.trim();
   if(!title) return;
-  videosData.push({id:uid('v'), title, source:document.getElementById('mv-source').value, url:document.getElementById('mv-url').value, featured:false, status:document.getElementById('mv-status').value});
-  setStore('nextgen_videos', videosData);
-  logActivity(`Added video "${title}"`);
-  closeModal(); renderVideos(); renderOverview();
+  try{
+    const created = await Api.createContent({ type:'video', title, source:document.getElementById('mv-source').value, url:document.getElementById('mv-url').value, status:document.getElementById('mv-status').value });
+    videosData.push(created);
+    closeModal(); renderVideos(); renderOverview();
+  }catch(err){ alert(err.message || 'Failed to save video.'); }
 }
 
 /* ---- SLIDES ---- */
 function renderSlides(){
   document.getElementById('slides-tbody').innerHTML = slidesData.length ? slidesData.map(s=>`
-    <tr><td>${s.title}</td><td>${s.type}</td><td><span class="badge ${s.status}">${s.status}</span></td>
+    <tr><td>${s.title}</td><td>${s.kind || s.type || '—'}</td><td><span class="badge ${s.status}">${s.status}</span></td>
       <td><button class="icon-btn" onclick="deleteSlide('${s.id}')">&#128465;</button></td></tr>`).join('')
     : `<tr><td colspan="4" class="empty-row">No presentations uploaded yet.</td></tr>`;
 }
-function deleteSlide(id){ slidesData = slidesData.filter(s=>s.id!==id); setStore('nextgen_slides', slidesData); renderSlides(); renderOverview(); }
+async function deleteSlide(id){ if(!confirm('Delete this presentation?')) return; try{ await Api.deleteContent(id); slidesData = slidesData.filter(s=>s.id!==id); renderSlides(); renderOverview(); }catch(err){ alert(err.message || 'Delete failed.'); } }
 function openSlideModal(){
   document.getElementById('modal-box').innerHTML = `
     <h2>Add Presentation</h2>
@@ -10097,13 +10112,14 @@ function openSlideModal(){
     <div class="modal-actions"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-save" onclick="saveSlide()">Save</button></div>`;
   openModal();
 }
-function saveSlide(){
+async function saveSlide(){
   const title = document.getElementById('ms-title').value.trim();
   if(!title) return;
-  slidesData.push({id:uid('s'), title, type:document.getElementById('ms-type').value, status:document.getElementById('ms-status').value});
-  setStore('nextgen_slides', slidesData);
-  logActivity(`Uploaded presentation "${title}"`);
-  closeModal(); renderSlides(); renderOverview();
+  try{
+    const created = await Api.createContent({ type:'slide', title, kind:document.getElementById('ms-type').value, status:document.getElementById('ms-status').value });
+    slidesData.push(created);
+    closeModal(); renderSlides(); renderOverview();
+  }catch(err){ alert(err.message || 'Failed to save presentation.'); }
 }
 
 /* ---- NOTIFICATIONS (admin only) ---- */
@@ -10198,7 +10214,7 @@ function renderEvents(){
         <button class="icon-btn" onclick="deleteEvent('${e.id}')">&#128465;</button>
       </div></td></tr>`).join('') : `<tr><td colspan="5" class="empty-row">No events yet.</td></tr>`;
 }
-function deleteEvent(id){ eventsData = eventsData.filter(e=>e.id!==id); setStore('nextgen_events', eventsData); renderEvents(); renderOverview(); }
+async function deleteEvent(id){ if(!confirm('Delete this event?')) return; try{ await Api.deleteContent(id); eventsData = eventsData.filter(e=>e.id!==id); renderEvents(); renderOverview(); }catch(err){ alert(err.message || 'Delete failed.'); } }
 function openEventModal(id){
   const ev = eventsData.find(e=>e.id===id);
   document.getElementById('modal-box').innerHTML = `
@@ -10215,14 +10231,15 @@ function openEventModal(id){
     <div class="modal-actions"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-save" onclick="saveEvent('${id||''}')">Save</button></div>`;
   openModal();
 }
-function saveEvent(id){
+async function saveEvent(id){
   const title = document.getElementById('me-title').value.trim();
   if(!title) return;
-  const data = {title, date:document.getElementById('me-date').value, location:document.getElementById('me-location').value, link:document.getElementById('me-link').value, status:document.getElementById('me-status').value};
-  if(id){ Object.assign(eventsData.find(e=>e.id===id), data); logActivity(`Updated event "${title}"`); }
-  else{ eventsData.push({id:uid('e'), ...data}); logActivity(`Created event "${title}"`); }
-  setStore('nextgen_events', eventsData);
-  closeModal(); renderEvents(); renderOverview();
+  const payload = {type:'event', title, date:document.getElementById('me-date').value, location:document.getElementById('me-location').value, link:document.getElementById('me-link').value, status:document.getElementById('me-status').value};
+  try{
+    if(id){ const updated = await Api.updateContent(id, payload); const i = eventsData.findIndex(e=>e.id===id); if(i>-1) eventsData[i] = updated; }
+    else { const created = await Api.createContent(payload); eventsData.push(created); }
+    closeModal(); renderEvents(); renderOverview();
+  }catch(err){ alert(err.message || 'Failed to save event.'); }
 }
 
 /* ---- TEAM ---- */
@@ -10236,7 +10253,7 @@ function renderTeam(){
       </div>
     </div>`).join('') : '<div class="empty-row">No team members yet.</div>';
 }
-function deleteTeam(id){ teamData = teamData.filter(t=>t.id!==id); setStore('nextgen_team', teamData); renderTeam(); }
+async function deleteTeam(id){ if(!confirm('Remove this team member?')) return; try{ await Api.deleteContent(id); teamData = teamData.filter(t=>t.id!==id); renderTeam(); }catch(err){ alert(err.message || 'Delete failed.'); } }
 function openTeamModal(id){
   const t = teamData.find(t=>t.id===id);
   document.getElementById('modal-box').innerHTML = `
@@ -10247,15 +10264,14 @@ function openTeamModal(id){
     <div class="modal-actions"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-save" onclick="saveTeam('${id||''}')">Save</button></div>`;
   openModal();
 }
-function saveTeam(id){
+async function saveTeam(id){
   const name = document.getElementById('mt-name').value.trim();
   if(!name) return;
-  const data = {name, role:document.getElementById('mt-role').value, img:document.getElementById('mt-img').value};
-  if(id){ Object.assign(teamData.find(t=>t.id===id), data); }
-  else{ teamData.push({id:uid('t'), ...data}); }
-  setStore('nextgen_team', teamData);
-  logActivity(`Updated visionary profile for "${name}"`);
-  closeModal(); renderTeam();
+  try{
+    if(id){ const updated = await Api.updateContent(id, { title:name, role:document.getElementById('mt-role').value, img:document.getElementById('mt-img').value }); const i = teamData.findIndex(t=>t.id===id); if(i>-1) teamData[i] = updated; }
+    else { const created = await Api.createContent({ type:'team', title:name, role:document.getElementById('mt-role').value, img:document.getElementById('mt-img').value }); teamData.push(created); }
+    closeModal(); renderTeam();
+  }catch(err){ alert(err.message || 'Failed to save team member.'); }
 }
 
 /* ---- GUEST INBOX ---- */
