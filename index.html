@@ -428,7 +428,7 @@ body{background:#F5F7E9;}
   color:var(--royal-deep);font-weight:700;font-size:13px;}#route-admin .sb-user .n{color:var(--ivory);font-size:12.5px;font-weight:600;}#route-admin .sb-user .r{color:rgba(255,249,242,0.6);font-size:11px;}#route-admin .logout-btn{
   margin-top:10px;width:100%;padding:9px;border-radius:10px;background:rgba(255,255,255,0.08);color:var(--ivory);
   border:none;font-size:12px;
-}#route-admin .main{padding:30px 40px 60px;overflow-x:hidden;}#route-admin .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;flex-wrap:wrap;gap:14px;}#route-admin .topbar h1{font-size:26px;}#route-admin .view-public{
+}#route-admin .main{padding:30px 40px 60px;overflow-x:hidden;}#route-admin .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;flex-wrap:wrap;gap:14px;}#route-admin .topbar h1{font-size:26px;}#route-admin .browser-only-note{font-size:12.5px;color:#8a6d1a;background:rgba(198,150,45,.10);border:1px solid rgba(198,150,45,.28);border-radius:10px;padding:8px 12px;margin:-14px 0 18px;line-height:1.5;}#route-admin .view-public{
   padding:10px 20px;border-radius:100px;border:1px solid var(--royal);color:var(--royal);background:transparent;
   font-size:12.5px;font-weight:600;text-decoration:none;
 }#route-admin .view{display:none;}#route-admin .view.active{display:block;}#route-admin .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}#route-admin .stat-card{
@@ -2379,8 +2379,7 @@ body{background:#F5F7E9;}
     <li><a href="#opportunities">Opportunities</a></li>
     <li><a href="#visionaries">Visionaries</a></li>
     <li><a href="#network">Global Network</a></li>
-    <li><a href="#">Privacy</a></li>
-    <li><a href="#">Contact</a></li>
+    <li><a href="#contact">Contact</a></li>
   </ul>
   <div class="footer-bottom">© 2026 NEXTGEN. A global ecosystem for future leaders.</div>
 </footer>
@@ -2685,6 +2684,7 @@ body{background:#F5F7E9;}
     <!-- VIDEO MANAGEMENT -->
     <div class="view" id="view-videos">
       <div class="topbar"><h1>Video Management</h1><button class="add-btn" onclick="openVideoModal()">+ Add Video</button></div>
+      <div class="browser-only-note">⚠️ Browser-only preview: videos are saved in this browser (localStorage) and are not yet connected to the database. Entries won't sync to other devices and may reset when site data is cleared.</div>
       <table>
         <thead><tr><th>Title</th><th>Source</th><th>Featured</th><th>Status</th><th></th></tr></thead>
         <tbody id="videos-tbody"></tbody>
@@ -2701,6 +2701,7 @@ body{background:#F5F7E9;}
     <!-- SLIDES & PRESENTATIONS -->
     <div class="view" id="view-slides">
       <div class="topbar"><h1>Slides &amp; Presentations</h1><button class="add-btn" onclick="openSlideModal()">+ Add Presentation</button></div>
+      <div class="browser-only-note">⚠️ Browser-only preview: presentations are saved in this browser (localStorage) and are not yet connected to the database. Entries won't sync to other devices and may reset when site data is cleared.</div>
       <table>
         <thead><tr><th>Title</th><th>Type</th><th>Status</th><th></th></tr></thead>
         <tbody id="slides-tbody"></tbody>
@@ -2768,6 +2769,7 @@ body{background:#F5F7E9;}
     <!-- EVENT MANAGER -->
     <div class="view" id="view-events">
       <div class="topbar"><h1>Event Manager</h1><button class="add-btn" onclick="openEventModal()">+ New Event</button></div>
+      <div class="browser-only-note">⚠️ Browser-only preview: events are saved in this browser (localStorage) and are not yet connected to the database. Entries won't sync to other devices and may reset when site data is cleared.</div>
       <table>
         <thead><tr><th>Event</th><th>Date</th><th>Location</th><th>Status</th><th></th></tr></thead>
         <tbody id="events-tbody"></tbody>
@@ -2777,6 +2779,7 @@ body{background:#F5F7E9;}
     <!-- TEAM MANAGEMENT -->
     <div class="view" id="view-team">
       <div class="topbar"><h1>Team Management</h1><button class="add-btn" onclick="openTeamModal()">+ Add Visionary</button></div>
+      <div class="browser-only-note">⚠️ Browser-only preview: team members are saved in this browser (localStorage) and are not yet connected to the database. Entries won't sync to other devices and may reset when site data is cleared.</div>
       <div class="team-grid" id="team-grid"></div>
     </div>
 
@@ -3545,7 +3548,11 @@ body{background:#F5F7E9;}
    (or set window.NEXTGEN_API_BASE before this script runs)
    to point at wherever you deploy the backend.
 ========================================================= */
-window.NEXTGEN_API_BASE = window.NEXTGEN_API_BASE || 'http://localhost:5000/api';
+/* API base: default to the same origin the site is served from (site + API
+   share one Express server). Only fall back to localhost when the page itself
+   is opened as a local file. An explicit window.NEXTGEN_API_BASE still wins. */
+window.NEXTGEN_API_BASE = window.NEXTGEN_API_BASE
+  || (location.protocol.startsWith('http') ? location.origin + '/api' : 'http://localhost:5000/api');
 
 let csrfToken = null;
 let currentUser = null; // { id, role: 'admin'|'editor', name }
@@ -4092,7 +4099,7 @@ const track = document.getElementById('test-track');
 testimonials.forEach(t=>{
   const el = document.createElement('div');
   el.className='bubble';
-  el.innerHTML = `<p class="msg">"${t.msg}"</p><div class="who"><img src="${t.img}"><div><div class="n">${t.name}</div><div class="r">${t.role}</div></div></div>`;
+  el.innerHTML = `<p class="msg">"${t.msg}"</p><div class="who"><img src="${t.img}" alt="${t.name}"><div><div class="n">${t.name}</div><div class="r">${t.role}</div></div></div>`;
   track.appendChild(el);
 });
 
@@ -6958,13 +6965,13 @@ function wsStep1(){
     <div class="form-row">
       <div class="form-field"><label>Banner Image</label>
         <div class="dropzone" id="ws-banner-dz" onclick="document.getElementById('ws-banner-file').click()" style="cursor:pointer;">
-          ${s.bannerImage ? `<img src="${s.bannerImage}" style="max-height:90px;border-radius:10px;">` : 'Click to upload'}
+          ${s.bannerImage ? `<img src="${s.bannerImage}" alt="Banner preview" style="max-height:90px;border-radius:10px;">` : 'Click to upload'}
         </div>
         <input type="file" id="ws-banner-file" accept="image/*" style="display:none;" onchange="wsUploadImage(this.files[0],'bannerImage','ws-banner-dz')">
       </div>
       <div class="form-field"><label>Thumbnail</label>
         <div class="dropzone" id="ws-thumb-dz" onclick="document.getElementById('ws-thumb-file').click()" style="cursor:pointer;">
-          ${s.thumbnailImage ? `<img src="${s.thumbnailImage}" style="max-height:90px;border-radius:10px;">` : 'Click to upload'}
+          ${s.thumbnailImage ? `<img src="${s.thumbnailImage}" alt="Thumbnail preview" style="max-height:90px;border-radius:10px;">` : 'Click to upload'}
         </div>
         <input type="file" id="ws-thumb-file" accept="image/*" style="display:none;" onchange="wsUploadImage(this.files[0],'thumbnailImage','ws-thumb-dz')">
       </div>
@@ -6981,7 +6988,7 @@ function wsStep1(){
       <div class="form-field"><label>Organization</label><input value="${s.speakerOrg}" oninput="wsMark('speakerOrg', this.value)"></div>
       <div class="form-field"><label>Speaker Photo</label>
         <div class="dropzone" id="ws-speaker-dz" onclick="document.getElementById('ws-speaker-file').click()" style="cursor:pointer;padding:10px;">
-          ${s.speakerPhoto ? `<img src="${s.speakerPhoto}" style="height:44px;width:44px;border-radius:50%;object-fit:cover;">` : 'Click to upload'}
+          ${s.speakerPhoto ? `<img src="${s.speakerPhoto}" alt="Speaker photo" style="height:44px;width:44px;border-radius:50%;object-fit:cover;">` : 'Click to upload'}
         </div>
         <input type="file" id="ws-speaker-file" accept="image/*" style="display:none;" onchange="wsUploadImage(this.files[0],'speakerPhoto','ws-speaker-dz')">
       </div>
@@ -7260,7 +7267,7 @@ function wsRenderDetail(w, statusRes){
           ${registered ? '<span class="pda-btn active">Registered</span>' : ''}
         </div>
         <div class="wsd-speaker">
-          ${w.speaker?.photo ? `<img src="${w.speaker.photo}">` : `<div class="ph">👤</div>`}
+          ${w.speaker?.photo ? `<img src="${w.speaker.photo}" alt="${w.speaker?.name || 'Speaker'}">` : `<div class="ph">👤</div>`}
           <div><b style="display:block;color:var(--cs-navy);font-size:13.5px;">${w.speaker?.name||'Speaker TBA'}</b><span style="font-size:11.5px;color:var(--ink-soft);">${w.speaker?.designation||''}</span></div>
         </div>
         <div class="wsd-meta-row">
@@ -7325,7 +7332,7 @@ function wsRenderTabBody(){
     overview: `<div class="ws-step-section"><h3>About this Workshop</h3><p style="font-size:13.5px;line-height:1.7;color:var(--ink);">${w.description||'No description yet.'}</p></div>`,
     agenda: `<div class="ws-step-section"><h3>Agenda</h3>${(w.agenda&&w.agenda.length) ? w.agenda.map(a=>`<div class="ws-toggle-row"><div><b>${a.time||''}</b><span>${a.item||''}</span></div></div>`).join('') : `<p style="font-size:12.5px;color:var(--ink-soft);">Agenda not published yet.</p>`}</div>`,
     outcomes: `<div class="ws-step-section"><h3>What You Will Learn</h3>${list(w.learningOutcomes)}<h3 style="margin-top:20px;">Prerequisites</h3>${list(w.prerequisites)}<h3 style="margin-top:20px;">Skills Covered</h3>${list(w.skillsCovered)}</div>`,
-    speaker: `<div class="ws-step-section"><h3>About the Speaker</h3><div class="wsd-speaker">${w.speaker?.photo?`<img src="${w.speaker.photo}">`:'<div class="ph">👤</div>'}<div><b style="display:block;color:var(--cs-navy);">${w.speaker?.name||'TBA'}</b><span style="font-size:12px;color:var(--ink-soft);">${w.speaker?.designation||''} ${w.speaker?.organization?'· '+w.speaker.organization:''}</span></div></div><p style="font-size:13px;margin-top:14px;line-height:1.7;">${w.speaker?.bio||'No bio added yet.'}</p></div>`,
+    speaker: `<div class="ws-step-section"><h3>About the Speaker</h3><div class="wsd-speaker">${w.speaker?.photo?`<img src="${w.speaker.photo}" alt="${w.speaker?.name || 'Speaker'}">`:'<div class="ph">👤</div>'}<div><b style="display:block;color:var(--cs-navy);">${w.speaker?.name||'TBA'}</b><span style="font-size:12px;color:var(--ink-soft);">${w.speaker?.designation||''} ${w.speaker?.organization?'· '+w.speaker.organization:''}</span></div></div><p style="font-size:13px;margin-top:14px;line-height:1.7;">${w.speaker?.bio||'No bio added yet.'}</p></div>`,
     resources: `<div class="ws-step-section" id="wsd-resources-inner"><h3>Resources</h3><p style="font-size:12.5px;color:var(--ink-soft);">Loading…</p></div>`,
     faq: `<div class="ws-step-section"><h3>FAQ</h3><p style="font-size:12.5px;color:var(--ink-soft);">Workshop-specific FAQ arrives alongside the Communication phase.</p></div>`,
   };
@@ -9197,7 +9204,7 @@ async function openPostDetail(id){
     const p = await Api.getPost(id);
     const tags = (p.tags||[]).map(t=>`<span class="tag-chip" style="cursor:pointer;" onclick="openHashtagPage('${t}')">#${t}</span>`).join('');
     el.innerHTML = `
-      ${p.coverImage ? `<img class="post-detail-hero" src="${p.coverImage}">` : ''}
+      ${p.coverImage ? `<img src="${p.coverImage}" alt="${p.title || 'Post image'}">` : ''}
       <div class="post-detail-meta">
         <span>${CONTENT_TYPE_LABELS[p.contentType]||'Article'}</span> · <span>${p.readingTime||1} min read</span> · <span>${(p.views||0).toLocaleString()} views</span>
       </div>
@@ -9986,7 +9993,7 @@ function renderMedia(){
   const rows = mediaData.filter(m=>m.name.toLowerCase().includes(q));
   document.getElementById('media-grid').innerHTML = rows.length ? rows.map(m=>`
     <div class="media-card">
-      <div class="media-thumb">${m.data?`<img src="${m.data}">`:'&#128196;'}</div>
+      <div class="media-thumb">${m.data?`<img src="${m.data}" alt="${m.name || 'Media file'}">`:'&#128196;'}</div>
       <div class="media-info"><div class="media-name">${m.name}</div><div class="media-meta">${m.category||'Uncategorized'}</div></div>
       <div class="media-actions"><button class="icon-btn" onclick="deleteMedia('${m.id}')">&#128465;</button></div>
     </div>`).join('') : '<div class="empty-row" style="grid-column:1/-1;">No media uploaded yet.</div>';
@@ -10020,7 +10027,7 @@ setupDropzone('media-drop','media-input', mediaData, 'nextgen_media', renderMedi
 function renderPosters(){
   document.getElementById('poster-grid').innerHTML = posterData.length ? posterData.map(m=>`
     <div class="media-card">
-      <div class="media-thumb">${m.data?`<img src="${m.data}">`:'&#128196;'}</div>
+      <div class="media-thumb">${m.data?`<img src="${m.data}" alt="${m.name || 'Media file'}">`:'&#128196;'}</div>
       <div class="media-info"><div class="media-name">${m.name}</div><div class="media-meta">Poster</div></div>
       <div class="media-actions"><button class="icon-btn" onclick="deletePoster('${m.id}')">&#128465;</button></div>
     </div>`).join('') : '<div class="empty-row" style="grid-column:1/-1;">No posters uploaded yet.</div>';
@@ -10222,7 +10229,7 @@ function saveEvent(id){
 function renderTeam(){
   document.getElementById('team-grid').innerHTML = teamData.length ? teamData.map(t=>`
     <div class="team-card">
-      <img src="${t.img}"><div class="tn">${t.name}</div><div class="tr">${t.role}</div>
+      <img src="${t.img}" alt="${t.name}"><div class="tn">${t.name}</div><div class="tr">${t.role}</div>
       <div class="tactions">
         <button class="icon-btn" onclick="openTeamModal('${t.id}')">&#9998;</button>
         <button class="icon-btn" onclick="deleteTeam('${t.id}')">&#128465;</button>
