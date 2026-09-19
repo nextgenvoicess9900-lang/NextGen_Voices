@@ -127,6 +127,7 @@ app.use('/api/assessment-questions', require('./routes/assessmentQuestionRoutes'
 app.use('/api/attempts', require('./routes/attemptRoutes'));
 app.use('/api/resources', require('./routes/resourceRoutes'));
 app.use('/api/certificates', require('./routes/certificateRoutes'));
+app.use('/api/content-items', require('./routes/contentItemRoutes'));
 
 app.use(notFound);
 app.use(errorHandler);
