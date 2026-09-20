@@ -2,7 +2,7 @@ const nodemailer = require('nodemailer');
 
 /**
  * Email delivery for Viewer-facing notifications. Uses plain SMTP so it
- * works with any provider (SendGrid, Postmark, Mailgun, Gmail SMTP, etc.)
+ * works with any provider (SendGrid, Postmark, Mailgun, Gmail SMTP, Resend, etc.)
  * — just fill in the SMTP_* variables in .env. If they're not configured,
  * emails are skipped (logged, not thrown) so the rest of the app keeps
  * working in local development without a mail account set up.
@@ -18,6 +18,22 @@ function getTransporter() {
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
   });
   return transporter;
+}
+
+/**
+ * Branded sender identity. Set SMTP_FROM_NAME ("NEXTGEN Voices") and
+ * SMTP_FROM_EMAIL ("no-reply@yourdomain.com") once and every email — OTPs,
+ * notifications, transactional — goes out branded. SMTP_FROM is still
+ * honored as a plain "Name <email>" or bare-address fallback for backwards
+ * compatibility with existing deployments.
+ */
+const SMTP_BRAND = () => process.env.SMTP_FROM_NAME || 'NEXTGEN';
+function getSender() {
+  if (process.env.SMTP_FROM_NAME && process.env.SMTP_FROM_EMAIL) {
+    return `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL}>`;
+  }
+  if (process.env.SMTP_FROM) return process.env.SMTP_FROM;
+  return `"${SMTP_BRAND()}" <no-reply@nextgenvoicess.org>`;
 }
 
 /**
@@ -39,12 +55,12 @@ async function sendNotificationEmail({ title, message }, recipientEmails = []) {
     const batch = recipientEmails.slice(i, i + BATCH_SIZE);
     try {
       await t.sendMail({
-        from: process.env.SMTP_FROM || 'NEXTGEN <no-reply@nextgen.org>',
-        to: process.env.SMTP_FROM || 'NEXTGEN <no-reply@nextgen.org>', // primary "to" stays internal
+        from: getSender(),
+        to: getSender(), // primary "to" stays internal
         bcc: batch,
-        subject: `NEXTGEN: ${title}`,
+        subject: `${SMTP_BRAND()} — ${title}`,
         text: message,
-        html: `<div style="font-family:sans-serif;line-height:1.6;"><h2 style="color:#143D8D;">${title}</h2><p>${message}</p><p style="color:#888;font-size:12px;margin-top:24px;">You're receiving this because email notifications are enabled on your NEXTGEN account. You can turn them off anytime from your account settings.</p></div>`,
+        html: `<div style="font-family:sans-serif;line-height:1.6;"><h2 style="color:#143D8D;">${SMTP_BRAND()} — ${title}</h2><p>${message}</p><p style="color:#888;font-size:12px;margin-top:24px;">You're receiving this because email notifications are enabled on your NEXTGEN account. You can turn them off anytime from your account settings.</p></div>`,
       });
       sent += batch.length;
     } catch (err) {
@@ -62,7 +78,7 @@ async function sendTransactionalEmail({ to, subject, text, html }) {
     return { sent: false };
   }
   try {
-    await t.sendMail({ from: process.env.SMTP_FROM || 'NEXTGEN <no-reply@nextgen.org>', to, subject, text, html });
+    await t.sendMail({ from: getSender(), to, subject: `${SMTP_BRAND()} — ${subject}`, text, html });
     return { sent: true };
   } catch (err) {
     console.error('[mailer] Failed to send transactional email:', err.message);
@@ -89,12 +105,12 @@ async function sendOtpEmail(to, code) {
   }
   try {
     await t.sendMail({
-      from: process.env.SMTP_FROM || 'NEXTGEN <no-reply@nextgen.org>',
+      from: getSender(),
       to,
-      subject: `Your NEXTGEN login code: ${code}`,
-      text: `Your NEXTGEN login code is ${code}. It expires in 10 minutes. If you didn't request this, you can ignore this email.`,
+      subject: `${SMTP_BRAND()} — Your login code: ${code}`,
+      text: `Your ${SMTP_BRAND()} login code is ${code}. It expires in 10 minutes. If you didn't request this, you can ignore this email.`,
       html: `<div style="font-family:sans-serif;line-height:1.6;">
-        <h2 style="color:#143D8D;">Your NEXTGEN login code</h2>
+        <h2 style="color:#143D8D;">${SMTP_BRAND()} login code</h2>
         <p style="font-size:32px;font-weight:700;letter-spacing:6px;color:#0F2C69;">${code}</p>
         <p>This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
       </div>`,
@@ -106,4 +122,4 @@ async function sendOtpEmail(to, code) {
   }
 }
 
-module.exports = { sendNotificationEmail, sendTransactionalEmail, sendOtpEmail };
+module.exports = { sendNotificationEmail, sendTransactionalEmail, sendOtpEmail, getSender, SMTP_BRAND };

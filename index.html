@@ -941,6 +941,16 @@ body{background:#F5F7E9;}
 #route-public .reel-close{ position:absolute; top:24px; right:28px; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.12); border:none; color:#fff; font-size:22px; cursor:pointer; }
 #route-public .reel-nav{ background:rgba(255,255,255,0.12); border:none; color:#fff; width:46px; height:46px; border-radius:50%; font-size:22px; cursor:pointer; margin:0 18px; }
 #route-public .reel-nav:hover, #route-public .reel-close:hover{ background:rgba(255,255,255,0.25); }
+#route-public .reel-actions{ position:absolute; bottom:64px; right:18px; display:flex; flex-direction:column; gap:10px; z-index:6; }
+#route-public .rv-btn{ width:46px; height:46px; border-radius:50%; border:none; background:rgba(255,255,255,0.14); color:#fff; font-size:17px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .18s ease; backdrop-filter:blur(4px); }
+#route-public .rv-btn:hover{ background:rgba(255,255,255,0.28); }
+#route-public .rv-btn:disabled{ opacity:.6; cursor:wait; }
+#route-public .rv-btn.active{ background:var(--ink); color:var(--cream); }
+#route-public .rv-btn .rv-count{ font-size:10.5px; font-weight:600; margin-left:3px; }
+@media (max-width:520px){
+  #route-public .rv-btn{ width:40px; height:40px; font-size:15px; }
+  #route-public .reel-actions{ bottom:58px; right:12px; gap:8px; }
+}
 
 @media (max-width:980px){
   #route-public .ex-layout{ grid-template-columns:1fr; }
@@ -2365,6 +2375,13 @@ body{background:#F5F7E9;}
   <button class="reel-close" id="reel-close" aria-label="Close reel viewer">&times;</button>
   <button class="reel-nav prev" id="reel-prev" aria-label="Previous reel">&#8249;</button>
   <div class="reel-stage" id="reel-stage"></div>
+  <div class="reel-actions" id="reel-actions">
+    <button class="rv-btn" id="rv-mute" aria-label="Unmute reel">&#128263;</button>
+    <button class="rv-btn" id="rv-like" aria-label="Like reel">&#9829;<span class="rv-count" id="rv-like-count">0</span></button>
+    <button class="rv-btn" id="rv-save" aria-label="Save reel">&#128278;<span class="rv-count" id="rv-save-count">0</span></button>
+    <button class="rv-btn" id="rv-full" aria-label="Toggle fullscreen">&#9974;</button>
+    <button class="rv-btn" id="rv-details" aria-label="Open reel details">&#8505;</button>
+  </div>
   <button class="reel-nav next" id="reel-next" aria-label="Next reel">&#8250;</button>
 </div>
 
@@ -4750,13 +4767,93 @@ function wireReelViewer(){
   document.getElementById('reel-close').addEventListener('click', closeReelViewer);
   document.getElementById('reel-prev').addEventListener('click', ()=> stepReel(-1));
   document.getElementById('reel-next').addEventListener('click', ()=> stepReel(1));
+  reelAct('rv-mute').addEventListener('click', toggleReelMute);
+  reelAct('rv-like').addEventListener('click', toggleReelLike);
+  reelAct('rv-save').addEventListener('click', toggleReelSave);
+  reelAct('rv-full').addEventListener('click', toggleReelFullscreen);
+  reelAct('rv-details').addEventListener('click', openReelDetails);
   document.getElementById('reel-viewer').addEventListener('click', (e)=>{ if(e.target.id==='reel-viewer') closeReelViewer(); });
+  // touch swipe: left = next reel, right = previous (40px threshold)
+  const stage = document.getElementById('reel-stage');
+  let tx = null, ty = null;
+  stage.addEventListener('touchstart', e=>{ tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, {passive:true});
+  stage.addEventListener('touchend', e=>{
+    if(tx===null) return;
+    const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+    if(Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) stepReel(dx < 0 ? 1 : -1);
+    tx = ty = null;
+  }, {passive:true});
   document.addEventListener('keydown', (e)=>{
     if(!document.getElementById('reel-viewer').classList.contains('open')) return;
     if(e.key==='Escape') closeReelViewer();
     if(e.key==='ArrowRight') stepReel(1);
     if(e.key==='ArrowLeft') stepReel(-1);
+    if(e.key==='m'||e.key==='M') toggleReelMute();
+    if(e.key==='f'||e.key==='F') toggleReelFullscreen();
   });
+}
+/* Reel viewer actions — mute, like, save, fullscreen, details. Like/save hit
+   the real Api.toggleLike/toggleBookmark endpoints (persisted server-side);
+   per-user state comes from Api.getPost (likedByMe/bookmarkedByMe), gated on
+   login via the standard portal drawer, with fail-soft errors — no fake success. */
+let reelMuted = true;
+function reelAct(id){ return document.getElementById(id); }
+async function refreshReelActionState(){
+  const p = exReelQueue[exReelIndex];
+  if(!p) return;
+  try{
+    const fresh = await Api.getPost(p._id);
+    Object.assign(p, { likeCount:fresh.likeCount, bookmarkCount:fresh.bookmarkCount, likedByMe:!!fresh.likedByMe, bookmarkedByMe:!!fresh.bookmarkedByMe });
+  }catch(e){ /* keep whatever state we had */ }
+  reelAct('rv-like-count').textContent = (p.likeCount||0).toLocaleString();
+  reelAct('rv-save-count').textContent = (p.bookmarkCount||0).toLocaleString();
+  reelAct('rv-like').classList.toggle('active', !!p.likedByMe);
+  reelAct('rv-save').classList.toggle('active', !!p.bookmarkedByMe);
+  setReelMuted(reelMuted);
+}
+function setReelMuted(m){
+  reelMuted = m;
+  const v = document.querySelector('#reel-stage video');
+  if(v) v.muted = m;
+  const b = reelAct('rv-mute');
+  if(b){ b.textContent = m ? '\u{1F507}' : '\u{1F50A}'; b.setAttribute('aria-label', m ? 'Unmute reel' : 'Mute reel'); }
+}
+function toggleReelMute(){ setReelMuted(!reelMuted); }
+function toggleReelFullscreen(){
+  const stage = document.getElementById('reel-stage');
+  if(document.fullscreenElement){ document.exitFullscreen(); }
+  else if(stage.requestFullscreen){ stage.requestFullscreen(); }
+}
+async function toggleReelLike(){
+  const p = exReelQueue[exReelIndex];
+  if(!p || !(await exRequireLogin())) return;
+  const btn = reelAct('rv-like'); btn.disabled = true;
+  try{
+    const res = await Api.toggleLike(p._id);
+    p.likedByMe = res.liked; p.likeCount = res.likeCount;
+    reelAct('rv-like').classList.toggle('active', res.liked);
+    reelAct('rv-like-count').textContent = res.likeCount.toLocaleString();
+  }catch(e){ /* fail-soft: UI stays as-is */ }
+  btn.disabled = false;
+}
+async function toggleReelSave(){
+  const p = exReelQueue[exReelIndex];
+  if(!p || !(await exRequireLogin())) return;
+  const btn = reelAct('rv-save'); btn.disabled = true;
+  try{
+    const res = await Api.toggleBookmark(p._id);
+    p.bookmarkedByMe = res.bookmarked; p.bookmarkCount = res.bookmarkCount;
+    reelAct('rv-save').classList.toggle('active', res.bookmarked);
+    reelAct('rv-save-count').textContent = res.bookmarkCount.toLocaleString();
+    if(typeof renderSavedRail==='function') renderSavedRail();
+  }catch(e){ /* fail-soft */ }
+  btn.disabled = false;
+}
+function openReelDetails(){
+  const p = exReelQueue[exReelIndex];
+  if(!p) return;
+  closeReelViewer();
+  openExplorePost(p._id);
 }
 function openReelViewer(index){
   exReelIndex = index;
@@ -4765,6 +4862,7 @@ function openReelViewer(index){
 }
 function closeReelViewer(){
   document.getElementById('reel-viewer').classList.remove('open');
+  if(document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
   const v = document.querySelector('#reel-stage video');
   if(v) v.pause();
 }
@@ -4779,10 +4877,12 @@ function paintReelStage(){
   const stage = document.getElementById('reel-stage');
   const src = (p.media && p.media[0]) ? p.media[0].url : '';
   stage.innerHTML = src
-    ? `<video src="${src}" autoplay muted loop playsinline controls></video><div class="rv-info"><div class="rv-title">${p.title}</div></div>`
+    ? `<video src="${src}" autoplay loop playsinline controls${reelMuted?' muted':''}></video><div class="rv-info"><div class="rv-title">${p.title}</div></div>`
     : `<img src="${p.coverImage||exPlaceholderImg('reel')}" alt=""><div class="rv-info"><div class="rv-title">${p.title}</div></div>`;
+  const v = stage.querySelector('video');
+  if(v) v.muted = reelMuted;
+  refreshReelActionState();
 }
-
 /* ---- sticky sidebar ---- */
 async function safeExplore(params){
   try{ const { posts } = await Api.explore(params); return posts; }catch(e){ return []; }
