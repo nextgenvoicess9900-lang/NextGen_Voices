@@ -23,10 +23,13 @@ const adminLogin = asyncHandler(async (req, res) => {
   const { userId, password } = req.body;
   const admin = await Admin.findOne({ userId: sanitizePlainText(userId) });
 
-  // Constant-shape response whether the user exists or not, to avoid
-  // leaking which accounts are valid.
-  const valid = admin && (await bcrypt.compare(password, admin.passwordHash));
-  if (!valid) return res.status(401).json({ error: 'Invalid credentials.' });
+  // Distinct error messages (owner's product decision): tell the admin
+  // whether the User ID or the password was wrong. Account-enumeration risk
+  // is accepted for this endpoint — it is rate-limited (authLimiter) and
+  // there is a single admin account.
+  if (!admin) return res.status(401).json({ error: 'Wrong User ID — no admin account exists with that ID.' });
+  const valid = await bcrypt.compare(password, admin.passwordHash);
+  if (!valid) return res.status(401).json({ error: 'Wrong password. Please try again.' });
 
   admin.lastLoginAt = new Date();
   await admin.save();

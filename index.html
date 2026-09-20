@@ -3595,9 +3595,12 @@ async function apiFetch(path, opts = {}){
 
   const res = await fetch(NEXTGEN_API_BASE + path, Object.assign({ credentials:'include' }, opts, { method, headers }));
   let data = null;
-  try{ data = await res.json(); }catch(e){ /* no body */ }
+  try{ data = await res.json(); }catch(e){ /* no body (HTML error page, empty body…) */ }
   if(!res.ok){
-    const err = new Error((data && data.error) || res.statusText || 'Request failed');
+    const fallback = data ? null : (res.status === 404
+      ? 'Cannot reach the NEXTGEN API at this address — the backend is not deployed here.'
+      : (res.statusText || 'Request failed — please try again.'));
+    const err = new Error((data && data.error) || fallback);
     err.status = res.status; err.data = data;
     throw err;
   }
