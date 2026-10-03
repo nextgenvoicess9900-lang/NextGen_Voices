@@ -1,0 +1,1 @@
+{"_creationTime":1790892065035.9067,"_id":"kd72w3kt756eq22asrh178r6yx8ffjvx","authorName":"NEXTGEN Team","body":"The admin dashboard no longer runs on localStorage — every post, question, notification and announcement is stored in a live database and visible to everyone instantly.","title":"Platform upgraded to a real backend"}
